@@ -1,8 +1,25 @@
 // server.js
+const http      = require('http');
 const WebSocket = require('ws');
 
+// Use the port Railway (or any PaaS) gives us,
+// falling back to 9980 for local dev:
 const port = process.env.PORT || 9980;
-const wss = new WebSocket.Server({ port });
+
+// 1) Create a plain HTTP server:
+const server = http.createServer((req, res) => {
+  // Health check endpoint
+  if (req.method === 'GET' && req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    return res.end('OK');
+  }
+  // You can add more HTTP routes here if you need them
+  res.writeHead(404);
+  res.end();
+});
+
+// 2) Create the WebSocket.Server, telling it to use our HTTP server
+const wss = new WebSocket.Server({ server, path: '/' });
 
 wss.on('connection', ws => {
   console.log('Client connected');
@@ -16,13 +33,12 @@ wss.on('connection', ws => {
       return;
     }
 
-    // Build the broadcast envelope
     const envelope = {
-      type:            'broadcast_message',
-      originalType:    data.originalType,              // "poll_response" | "custom_message"
-      message:         data.message,                   // string
-      timestamp:       new Date().toISOString(),       // e.g. "2024-01-01T12:00:00.000Z"
-      session_id:      data.session_id                 // string
+      type:         'broadcast_message',
+      originalType: data.originalType,
+      message:      data.message,
+      timestamp:    new Date().toISOString(),
+      session_id:   data.session_id
     };
 
     const payload = JSON.stringify(envelope);
@@ -40,4 +56,7 @@ wss.on('connection', ws => {
   });
 });
 
-console.log(`WebSocket server listening on ws://localhost:${port}`);
+// 3) Start listening
+server.listen(port, () => {
+  console.log(`HTTP+WebSocket server listening on port ${port}`);
+});
