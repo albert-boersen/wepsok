@@ -1,37 +1,47 @@
 // server.js
+const http      = require('http');
 const WebSocket = require('ws');
 
 const port = process.env.PORT || 9980;
-const wss = new WebSocket.Server({ port });
+
+// 1) Plain HTTP server for health checks
+const server = http.createServer((req, res) => {
+  if (req.method === 'GET' && req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    return res.end('OK');
+  }
+  res.writeHead(404);
+  res.end();
+});
+
+// 2) Attach WebSocket server to the same HTTP server
+const wss = new WebSocket.Server({ server, path: '/' });
 
 wss.on('connection', ws => {
   console.log('Client connected');
 
   ws.on('message', raw => {
     console.log('Received:', raw);
-
     let data;
     try {
-      // Parse the incoming JSON
       data = JSON.parse(raw);
     } catch (err) {
-      console.error('Invalid JSON received:', raw);
+      console.error('Invalid JSON:', raw);
       return;
     }
 
-    // Build your broadcast envelope
+    // Build the broadcast envelope
     const envelope = {
       type:         'broadcast_message',
-      originalType: data.originalType,  // "poll_response" or "custom_message"
-      message:      data.message || data.answer || '', 
+      originalType: data.originalType,
+      message:      data.message || data.answer || '',
       timestamp:    new Date().toISOString(),
       session_id:   data.session_id
     };
 
-    // Serialize the envelope to a string
     const payload = JSON.stringify(envelope);
 
-    // Broadcast the JSON string to all connected clients
+    // Broadcast to all connected clients
     wss.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(payload);
@@ -44,4 +54,7 @@ wss.on('connection', ws => {
   });
 });
 
-console.log(`WebSocket server listening`);
+// 3) Start listening on the dynamic port
+server.listen(port, () => {
+  console.log(`HTTP+WebSocket server listening on port ${port}`);
+});
